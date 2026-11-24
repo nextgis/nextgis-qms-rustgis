@@ -147,7 +147,7 @@ def main() -> int:
     if not repo and re.match(r"^https://github\.com/[^/]+/[^/]+$", manifest.get("homepage", "")):
         repo = manifest["homepage"].removeprefix("https://github.com/")
     url = args.url or (f"https://github.com/{repo}/releases/download/v{version}/{name}" if repo else f"https://<where you publish it>/{name}")
-    registry_entry = {"id": plugin_id, "source": {"url": url, "sha256": sha}, "categories": ["Utilities"]}
+    registry_entry = {"id": plugin_id, "source": {"url": url, "sha256": sha}, "categories": ["Basemaps", "Data", "Imagery"]}
     (DIST / f"{plugin_id}.json").write_text(json.dumps(registry_entry, indent=2) + "\n", encoding="utf-8")
 
     print(f"dist/{name}  {len(data):,} bytes  sha256 {sha}")

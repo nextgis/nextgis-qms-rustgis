@@ -15,8 +15,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "my-plugin"
-version = "0.1.0"
+name = "nextgis-qms-rustgis"
+version = "1.0.0"
 dependencies = [
  "rustgis-plugin",
 ]
@@ -42,7 +42,7 @@ dependencies = [
 [[package]]
 name = "rustgis-plugin"
 version = "0.1.0"
-source = "git+https://github.com/opengeos/rustgis-plugins#efd5d07f11247df2677fbd878a108f4c0fde53dc"
+source = "git+https://github.com/opengeos/rustgis-plugins#ec27d18f7fa2c53436410ecb1cdaa17084247967"
 dependencies = [
  "serde_json",
 ]
