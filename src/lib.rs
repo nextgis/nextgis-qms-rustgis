@@ -1,5 +1,5 @@
 //! NextGIS QuickMapServices plugin for RustGIS
-use rustgis_plugin::{host, json, Kind, Node, Panel, Request, Value};
+use rustgis_plugin::{Kind, Node, Panel, Request, Value, host, json};
 use std::collections::HashSet;
 
 const API: &str = "https://qms.nextgis.com/api/v1/geoservices/";
@@ -27,10 +27,10 @@ fn get_json(req: &Request, url: &str) -> Result<Option<Value>, String> {
     if let Some(parsed) = answer.get("json") {
         return Ok(Some(parsed.clone()));
     }
-    let text = answer.get("text").and_then(Value::as_str)
-        .ok_or_else(|| tr(req, "QMS API did not return JSON text"))?;
+    let text = answer.get("text").and_then(Value::as_str).ok_or_else(|| tr(req, "QMS API did not return JSON text"))?;
     rustgis_plugin::serde_json::from_str(text)
-        .map(Some).map_err(|e| tr_args(req, "Invalid QMS response: {error}", &[("error", &e.to_string())]))
+        .map(Some)
+        .map_err(|e| tr_args(req, "Invalid QMS response: {error}", &[("error", &e.to_string())]))
 }
 
 fn percent_encode(text: &str) -> String {
@@ -46,15 +46,12 @@ fn percent_encode(text: &str) -> String {
 }
 
 fn query(req: &Request) -> &str {
-    req.panel.get("search-form")
-        .and_then(|v| v.get("query"))
-        .and_then(Value::as_str).unwrap_or("")
+    req.panel.get("search-form").and_then(|v| v.get("query")).and_then(Value::as_str).unwrap_or("")
 }
 
 fn selected_id(req: &Request) -> Result<u64, String> {
     let selection = req.panel_str("results").ok_or_else(|| tr(req, "Select a service first"))?;
-    let number = selection.strip_prefix("service:")
-        .ok_or_else(|| tr(req, "Select a service, not an informational row"))?;
+    let number = selection.strip_prefix("service:").ok_or_else(|| tr(req, "Select a service, not an informational row"))?;
     number.parse::<u64>().map_err(|_| tr(req, "Invalid QMS service ID"))
 }
 
@@ -77,8 +74,10 @@ fn initial_state(req: &Request) -> Value {
 }
 
 fn initial_panel() -> Panel {
-    Panel::new().nodes("results", Vec::<Node>::new())
-        .enabled("add", false).enabled("details", false)
+    Panel::new()
+        .nodes("results", Vec::<Node>::new())
+        .enabled("add", false)
+        .enabled("details", false)
         .visible("results", false)
         .visible("sublayer", false)
         .visible("message", false)
@@ -98,8 +97,10 @@ fn search(req: &Request) -> Result<Value, String> {
             .answer(json!({})));
     }
     if query.chars().count() > 200 {
-        return Ok(initial_panel().visible("message", true)
-            .text("message", tr(req, "Search text must be at most 200 characters.")).answer(json!({})));
+        return Ok(initial_panel()
+            .visible("message", true)
+            .text("message", tr(req, "Search text must be at most 200 characters."))
+            .answer(json!({})));
     }
 
     let mut nodes = Vec::<Node>::new();
@@ -117,29 +118,35 @@ fn search(req: &Request) -> Result<Value, String> {
             (array, false)
         } else {
             total = payload.get("count").and_then(Value::as_u64).or(total);
-            let records = payload.get("results").and_then(Value::as_array)
-                .ok_or_else(|| tr(req, "Invalid QMS results list"))?;
-            (records, payload.get("next").is_some_and(|v| {
-                v.as_str().is_some_and(|s| !s.is_empty()) || v.as_bool() == Some(true)
-            }))
+            let records = payload.get("results").and_then(Value::as_array).ok_or_else(|| tr(req, "Invalid QMS results list"))?;
+            (records, payload.get("next").is_some_and(|v| v.as_str().is_some_and(|s| !s.is_empty()) || v.as_bool() == Some(true)))
         };
         let empty = records.is_empty();
         for record in records {
             let Some(id) = record.get("id").and_then(Value::as_u64) else { continue };
-            if !seen.insert(id) { continue; }
+            if !seen.insert(id) {
+                continue;
+            }
             let name = record.get("name").and_then(Value::as_str).unwrap_or("Untitled service");
             let kind = record.get("type").and_then(Value::as_str).unwrap_or("service").to_uppercase();
-            let concise: String = (if name == "Untitled service" { tr(req, name) } else { name.to_owned() })
-                .chars().take(145).collect();
+            let concise: String = (if name == "Untitled service" { tr(req, name) } else { name.to_owned() }).chars().take(145).collect();
             nodes.push(Node::new(format!("service:{id}"), format!("{concise} · {kind}")));
         }
-        if empty || !more { break; }
-        if page + 1 == MAX_PAGES { clipped = true; }
+        if empty || !more {
+            break;
+        }
+        if page + 1 == MAX_PAGES {
+            clipped = true;
+        }
     }
 
     let count = nodes.len();
     let message = if clipped {
-        tr_args(req, "Showing {count} matches; QMS returned more than this panel can load. Refine your search.", &[("count", &count.to_string())])
+        tr_args(
+            req,
+            "Showing {count} matches; QMS returned more than this panel can load. Refine your search.",
+            &[("count", &count.to_string())],
+        )
     } else if count == 0 {
         tr(req, "No services found.")
     } else if let Some(all) = total {
@@ -147,9 +154,13 @@ fn search(req: &Request) -> Result<Value, String> {
     } else {
         tr_args(req, "{count} matching services.", &[("count", &count.to_string())])
     };
-    Ok(initial_panel().visible("results", true).visible("message", true)
-        .nodes("results", nodes).value("results", Value::Null)
-        .text("message", message).answer(json!({})))
+    Ok(initial_panel()
+        .visible("results", true)
+        .visible("message", true)
+        .nodes("results", nodes)
+        .value("results", Value::Null)
+        .text("message", message)
+        .answer(json!({})))
 }
 
 fn service_type(detail: &Value) -> String {
@@ -158,24 +169,36 @@ fn service_type(detail: &Value) -> String {
 
 fn layer_names(info: &Value) -> Vec<(String, String)> {
     let list = info.get("layers").and_then(Value::as_array).or_else(|| info.as_array());
-    list.into_iter().flatten().filter_map(|layer| {
-        let key = layer.get("name").or_else(|| layer.get("layer")).or_else(|| layer.get("id"))?;
-        let id = key.as_str().map(str::to_string).unwrap_or_else(|| key.to_string());
-        let title = layer.get("title").and_then(Value::as_str).unwrap_or(&id).to_owned();
-        Some((id, title))
-    }).collect()
+    list.into_iter()
+        .flatten()
+        .filter_map(|layer| {
+            let key = layer.get("name").or_else(|| layer.get("layer")).or_else(|| layer.get("id"))?;
+            let id = key.as_str().map(str::to_string).unwrap_or_else(|| key.to_string());
+            let title = layer.get("title").and_then(Value::as_str).unwrap_or(&id).to_owned();
+            Some((id, title))
+        })
+        .collect()
 }
 
 fn select(req: &Request) -> Result<Value, String> {
     let Ok(id) = selected_id(req) else {
-        return Ok(Panel::new().enabled("add", false).enabled("details", false)
-            .visible("sublayer", false).value("sublayer", Value::Null)
-            .visible("message", false).answer(json!({})));
+        return Ok(Panel::new()
+            .enabled("add", false)
+            .enabled("details", false)
+            .visible("sublayer", false)
+            .value("sublayer", Value::Null)
+            .visible("message", false)
+            .answer(json!({})));
     };
-    let Some(detail) = qms_detail(req, id)? else { return Ok(json!({})); };
+    let Some(detail) = qms_detail(req, id)? else {
+        return Ok(json!({}));
+    };
     let kind = service_type(&detail);
-    let mut panel = Panel::new().enabled("add", true).enabled("details", true)
-        .visible("sublayer", false).options("sublayer", Vec::<Node>::new())
+    let mut panel = Panel::new()
+        .enabled("add", true)
+        .enabled("details", true)
+        .visible("sublayer", false)
+        .options("sublayer", Vec::<Node>::new())
         .value("sublayer", Value::Null)
         .visible("message", false);
 
@@ -188,22 +211,29 @@ fn select(req: &Request) -> Result<Value, String> {
                 Ok(answer) => {
                     let layers = layer_names(&answer);
                     if layers.len() > 1 {
-                        panel = panel.visible("sublayer", true)
+                        panel = panel
+                            .visible("sublayer", true)
                             .options("sublayer", layers.iter().take(1000).map(|(key, title)| Node::new(key, title)));
-                        panel = panel.visible("message", true)
-                            .text("message", tr(req, "Choose a WMS/WFS sublayer, then click Add service."));
+                        panel =
+                            panel.visible("message", true).text("message", tr(req, "Choose a WMS/WFS sublayer, then click Add service."));
                     } else if layers.is_empty() {
-                        panel = panel.enabled("add", false).visible("message", true)
+                        panel = panel
+                            .enabled("add", false)
+                            .visible("message", true)
                             .text("message", tr(req, "RustGIS could not discover a supported WMS/WFS sublayer."));
                     }
                 }
                 Err(e) => {
-                    panel = panel.enabled("add", false).visible("message", true)
+                    panel = panel
+                        .enabled("add", false)
+                        .visible("message", true)
                         .text("message", tr_args(req, "Cannot list sublayers: {error}", &[("error", &e)]));
                 }
             }
         } else {
-            panel = panel.enabled("add", false).visible("message", true)
+            panel = panel
+                .enabled("add", false)
+                .visible("message", true)
                 .text("message", tr(req, "This QMS service has no valid WMS/WFS address."));
         }
     }
@@ -212,24 +242,33 @@ fn select(req: &Request) -> Result<Value, String> {
 
 fn add(req: &Request) -> Result<Value, String> {
     let id = selected_id(req)?;
-    let Some(detail) = qms_detail(req, id)? else { return Ok(json!({})); };
-    let name_owned = detail.get("name").and_then(Value::as_str)
-        .map(str::to_owned).unwrap_or_else(|| tr(req, "QMS service"));
+    let Some(detail) = qms_detail(req, id)? else {
+        return Ok(json!({}));
+    };
+    let name_owned = detail.get("name").and_then(Value::as_str).map(str::to_owned).unwrap_or_else(|| tr(req, "QMS service"));
     let name = name_owned.as_str();
     let kind = service_type(&detail);
     let raw = detail.get("url").and_then(Value::as_str).unwrap_or("");
-    if !supported_url(raw) { return Err(tr(req, "This QMS service has no valid HTTP(S) URL.")); }
+    if !supported_url(raw) {
+        return Err(tr(req, "This QMS service has no valid HTTP(S) URL."));
+    }
 
     let outcome = match kind.as_str() {
         "tms" | "xyz" => {
             let url = if detail.get("y_origin_top").and_then(Value::as_bool) == Some(false) {
                 raw.replace("{y}", "{-y}")
-            } else { raw.to_string() };
+            } else {
+                raw.to_string()
+            };
             let mut opts = json!({"url":url,"name":name,"overlay":true,"replace":false});
-            let credit = detail.get("copyright_text").and_then(Value::as_str)
+            let credit = detail
+                .get("copyright_text")
+                .and_then(Value::as_str)
                 .filter(|s| !s.trim().is_empty())
                 .or_else(|| detail.get("license_name").and_then(Value::as_str));
-            if let Some(credit) = credit { opts["attribution"] = json!(credit); }
+            if let Some(credit) = credit {
+                opts["attribution"] = json!(credit);
+            }
             if let Some(zmax) = detail.get("z_max").and_then(Value::as_u64) {
                 opts["maxZoom"] = json!(zmax.min(30));
             }
@@ -245,14 +284,19 @@ fn add(req: &Request) -> Result<Value, String> {
                 return Ok(json!({}));
             }
             let layers = layer_names(&info);
-            if layers.is_empty() { return Err(tr_args(req, "No supported {type} sublayers were discovered.", &[("type", &kind.to_uppercase())])); }
+            if layers.is_empty() {
+                return Err(tr_args(req, "No supported {type} sublayers were discovered.", &[("type", &kind.to_uppercase())]));
+            }
             let picked = req.panel_str("sublayer");
             let chosen = if layers.len() == 1 {
                 &layers[0].0
             } else {
                 let choice = picked.ok_or_else(|| tr(req, "Choose a WMS/WFS sublayer before adding this service."))?;
-                &layers.iter().find(|(id, _)| id == choice)
-                    .ok_or_else(|| tr(req, "The selected sublayer is unavailable; select the service again."))?.0
+                &layers
+                    .iter()
+                    .find(|(id, _)| id == choice)
+                    .ok_or_else(|| tr(req, "The selected sublayer is unavailable; select the service again."))?
+                    .0
             };
             host::call("service.add", json!({"url":raw,"type":kind,"layer":chosen}))?
         }
@@ -262,15 +306,18 @@ fn add(req: &Request) -> Result<Value, String> {
         return Ok(json!({})); // The SDK host completes this addition and re-runs the command.
     }
     host::notify(&tr_args(req, "Added QMS service: {name}", &[("name", name)]));
-    Ok(Panel::new().visible("message", true).text("message", tr_args(req, "Added: {name}", &[("name", name)]))
+    Ok(Panel::new()
+        .visible("message", true)
+        .text("message", tr_args(req, "Added: {name}", &[("name", name)]))
         .answer(json!({"service":id,"added":true})))
 }
 
 fn details(req: &Request) -> Result<Value, String> {
     let id = selected_id(req)?;
-    let Some(detail) = qms_detail(req, id)? else { return Ok(json!({})); };
-    let name_owned = detail.get("name").and_then(Value::as_str)
-        .map(str::to_owned).unwrap_or_else(|| tr(req, "QMS service"));
+    let Some(detail) = qms_detail(req, id)? else {
+        return Ok(json!({}));
+    };
+    let name_owned = detail.get("name").and_then(Value::as_str).map(str::to_owned).unwrap_or_else(|| tr(req, "QMS service"));
     let name = name_owned.as_str();
     let desc = detail.get("desc").and_then(Value::as_str).unwrap_or("");
     let link = format!("https://qms.nextgis.com/geoservices/{id}/");
@@ -281,14 +328,13 @@ fn details(req: &Request) -> Result<Value, String> {
 fn contribute(req: &Request) -> Result<Value, String> {
     let message = tr_args(req, CONTRIBUTE_MESSAGE, &[("url", CONTRIBUTE_URL)]);
     host::notify(&message);
-    Ok(Panel::new()
-        .visible("message", true)
-        .text("message", &message)
-        .answer(json!({"report": message})))
+    Ok(Panel::new().visible("message", true).text("message", &message).answer(json!({"report": message})))
 }
 
 fn handle(req: Request) -> Result<Value, String> {
-    if req.kind != Kind::Command { return Err(tr(&req, "QMS has no geoprocessing tools")); }
+    if req.kind != Kind::Command {
+        return Err(tr(&req, "QMS has no geoprocessing tools"));
+    }
     match req.id.as_str() {
         "init" => Ok(initial_state(&req)),
         "search" => search(&req),
@@ -336,9 +382,14 @@ mod tests {
 
     fn test_request(lang: &str) -> Request {
         Request {
-            kind: Kind::Command, id: "init".into(), params: Value::Null,
-            layers: Default::default(), files: Default::default(),
-            lang: lang.into(), panel: Default::default(), panel_changed: Vec::new(),
+            kind: Kind::Command,
+            id: "init".into(),
+            params: Value::Null,
+            layers: Default::default(),
+            files: Default::default(),
+            lang: lang.into(),
+            panel: Default::default(),
+            panel_changed: Vec::new(),
         }
     }
 
@@ -358,13 +409,12 @@ mod tests {
     #[test]
     fn initialized_form_has_a_text_field() {
         let state = initial_state(&test_request("en"));
-        let fields = state["panel"]["items"]["search-form"]["fields"]
-            .as_array().expect("search form fields must be supplied in the state response");
+        let fields =
+            state["panel"]["items"]["search-form"]["fields"].as_array().expect("search form fields must be supplied in the state response");
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0]["id"], "query");
         assert_eq!(fields[0]["kind"], "text");
         assert_eq!(fields[0]["label"], "Find a service");
         assert_eq!(state["panel"]["items"]["results"]["visible"], false);
     }
-
 }
